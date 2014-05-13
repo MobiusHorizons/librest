@@ -22,6 +22,34 @@ int rest_build_param(char** param, const char * name, const char* value){
 	return sprintf(*param, "%s=%s", name, value);
 }
 
+int rest_build_header(char ** header, const char * name, const char * value){
+	*header= (char*)malloc(strlen(name) + strlen(value) + 4);
+	return sprintf(*header,"%s: %s", name,value);
+}
+
+char * rest_build_url(char ** params, char* base){
+	if (params == NULL) return strdup(base);
+	char * url; 
+	int num_params;
+	int i;
+	int len = 0;
+	for (i = 0; params[i] != NULL; i++){
+		len += strlen(params[i]) + 1;
+	}
+	num_params = i;
+	url = (char*) malloc(strlen(base) + len + 2);
+	strcpy(url, base);
+	strcat(url, "?");
+	for ( i = 0; i < num_params; i ++){
+		strcat(url, params[i]);
+		if ( i< num_params-1)
+			strcat(url, "&");
+	}
+	char *escaped = rest_escape(url);
+	free(url);
+	return escaped;
+}
+
 char * rest_escape(char * url){
 	size_t len = strlen(url);
 	size_t diff = 0;
@@ -59,10 +87,21 @@ void * run_curl(void* ptr){
 		free(args->url);
 	}
 }
+
 size_t ReadFileCB( void *contents, size_t size, size_t nmemb, void *userp){
 	FILE * file = (FILE*) userp;
 	if (file == NULL) file == stdin;
 	return fread(contents,size,nmemb,file);
+}
+
+size_t ReadBufferCB( void *contents, size_t size, size_t nmemb, void *userp){
+	if (userp != NULL){
+		size_t realsize = size * nmemb;
+		buffer * data = (buffer*) userp;
+		realsize = buffer_read(data,contents,realsize);
+		printf("size = %d,contents = %.*s\n",realsize,realsize,(char*)contents);
+		return realsize;
+	}
 }
 
 static size_t WriteFileCB(void * contents, size_t size, size_t nmemb, void * userp){
@@ -81,26 +120,23 @@ static size_t WriteBufferCB(void *contents, size_t size, size_t nmemb, void *use
 	}
 }
 
-char * rest_build_url(char ** params, char* base){
-	char * url; 
-	int num_params;
-	int i;
-	int len = 0;
-	for (i = 0; params[i] != NULL; i++){
-		len += strlen(params[i]) + 1;
+static size_t WriteLinesCB(void *contents, size_t size, size_t nmemb, void *userp)
+{ 
+	if (userp!= NULL){
+		int i = 0;
+		char ** lines = (char**) userp;
+		while (lines[i] != NULL && lines[i][0] != '\0' /*last entry*/) i++;
+		// i now equals the first writable line if lines[i] = NULL
+		if (lines[i] == NULL && ((char*)contents)[0] != '\n'){
+			size_t realsize = size * nmemb;
+			lines[i] = malloc(realsize);
+			memcpy(lines[i],contents,realsize);
+			lines[i][realsize-1] = '\0'; // cut the newline
+			return realsize;
+		} else {
+			return size*nmemb; // ignore
+		}
 	}
-	num_params = i;
-	url = (char*) malloc(strlen(base) + len + 2);
-	strcpy(url, base);
-	strcat(url, "?");
-	for ( i = 0; i < num_params; i ++){
-		strcat(url, params[i]);
-		if ( i< num_params-1)
-			strcat(url, "&");
-	}
-	char *escaped = rest_escape(url);
-	free(url);
-	return escaped;
 }
 
 FILE * rest_get	(char ** params, char * url){
@@ -168,16 +204,98 @@ buffer  rest_post (char ** params, char * url){
 	return data;
 }
 
+buffer  rest_post_headers (char ** params, char ** headers, char * url){
+	CURL * curl = curl_easy_init();
+	char * post = rest_build_url(params,""); post++;
+	struct curl_slist * slist = NULL;
+	int i = 0;
+        while (headers[i] != NULL){
+		slist = curl_slist_append(slist,headers[i++]);
+	}
+	char * escaped_url = rest_escape(url);
+	SSL_CERT
+	buffer data = buffer_init(data,0);
+	curl_easy_setopt(curl,CURLOPT_URL,escaped_url);
+	curl_easy_setopt(curl,CURLOPT_POSTFIELDS,post);
+	curl_easy_setopt(curl,CURLOPT_HTTPHEADER, slist);
+	curl_easy_setopt(curl,CURLOPT_WRITEDATA, &data);
+	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
+	CURLcode res = curl_easy_perform(curl);
+	if (res != CURLE_OK)
+		printf("res = &d, data = %s\n",res,data.data);
+	curl_easy_cleanup(curl);
+	curl_slist_free_all(slist);
+	free(--post);
+	free(escaped_url);
+	return data;
+}
+
+int rest_post_all(rest_args args){
+	CURL * curl = curl_easy_init();
+	char * post = NULL;
+	char * escaped_url = NULL; 
+	char content_length[100];
+	char * content_type = NULL;
+	struct curl_slist *slist = NULL;
+	int i;
+	SSL_CERT
+	if (args.params != NULL){
+		int len = 0;
+		int n = 0;
+		while (args.params[n] != NULL)  len += strlen(args.params[n++]) + 1;
+		post = malloc(len);
+		post[0] = '\0';
+		for (i = 0; i < n; i++){
+			strcat(post,args.params[i]);
+			if (i < n-1) strcat(post,"&");
+		}
+		curl_easy_setopt(curl,CURLOPT_POSTFIELDS,post);
+	}
+	if (args.content != NULL){
+		curl_easy_setopt(curl,CURLOPT_POSTFIELDS,args.content->data);
+		rest_build_header(&content_type,"Content-Type",args.content_type);
+		sprintf(content_length,"Content-Length: %d",args.content->size);
+		slist = curl_slist_append(slist,content_type);
+		slist = curl_slist_append(slist,content_length);
+	}
+	if (args.headers !=NULL){
+		i = 0;
+		while (args.headers[i] != NULL){
+			slist = curl_slist_append(slist,args.headers[i++]);
+		}
+		curl_easy_setopt(curl,CURLOPT_HTTPHEADER,slist);
+	}
+	if (args.return_headers != NULL){
+		curl_easy_setopt(curl,CURLOPT_WRITEHEADER,args.return_headers);
+		curl_easy_setopt(curl,CURLOPT_HEADERFUNCTION,WriteLinesCB);
+	}
+	if (args.url != NULL){
+		escaped_url = rest_escape(args.url);
+		curl_easy_setopt(curl,CURLOPT_URL,escaped_url);
+	}
+
+	if (args.return_data != NULL){
+		curl_easy_setopt(curl,CURLOPT_WRITEDATA, args.return_data);
+		curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
+	}
+//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	CURLcode res = curl_easy_perform(curl);
+	curl_easy_cleanup(curl);
+	free(post);
+	free(content_type);
+	free(escaped_url);
+	curl_slist_free_all(slist);
+	return res;
+}
 buffer rest_put_file (char** params, char* url, FILE * in){
 	CURL * curl = curl_easy_init();
 	buffer data = buffer_init(data,0);
 	char * full_url = rest_build_url(params,url);
-	free(full_url);
 //	printf("%s\n",full_url);
 	curl_easy_setopt(curl,CURLOPT_URL,full_url);
 	curl_easy_setopt(curl,CURLOPT_UPLOAD, 1L);
 	curl_easy_setopt(curl,CURLOPT_READDATA,in);
-//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
 	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
 	curl_easy_setopt(curl,CURLOPT_READFUNCTION,ReadFileCB); // for windows
@@ -190,3 +308,35 @@ buffer rest_put_file (char** params, char* url, FILE * in){
 	}
 	return data;
 }
+
+buffer rest_put_headers (char** params,char** headers, char* url, FILE * in){
+	CURL * curl = curl_easy_init();
+	struct curl_slist *slist = NULL;
+	buffer data = buffer_init(data,0);
+	char * full_url = rest_build_url(params,url);
+	int i;
+//	printf("%s\n",full_url);
+	if (headers != NULL){
+		i = 0;
+		while (headers[i] != NULL){
+			slist = curl_slist_append(slist,headers[i++]);
+		}
+		curl_easy_setopt(curl,CURLOPT_HTTPHEADER,slist);
+	}
+	curl_easy_setopt(curl,CURLOPT_URL,full_url);
+	curl_easy_setopt(curl,CURLOPT_UPLOAD, 1L);
+	curl_easy_setopt(curl,CURLOPT_READDATA,in);
+	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+	curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
+	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
+	curl_easy_setopt(curl,CURLOPT_READFUNCTION,ReadFileCB); // for windows
+	CURLcode res = curl_easy_perform(curl);
+	free(full_url);
+	curl_easy_cleanup(curl);
+	if (res != CURLE_OK){
+		printf("res = %d, data = %.*s\n",res,data.size,data.data);
+		data = buffer_free(data);
+	}
+	return data;
+}
+

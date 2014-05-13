@@ -1,4 +1,5 @@
 #include "buffer.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -20,6 +21,26 @@ buffer buffer_append(buffer b, char* data, size_t length){
 	//printf("DONE\n");
 	b.size = newLength;
 	b.data[newLength] = '\0';
+	return b;
+}
+
+int buffer_read(buffer *b, char *data, size_t length){
+	length = (length > b->size)? b->size: length;
+	size_t  newLength =  b->size - length;
+	char * ptr =memcpy(data,b->data,length);
+	char * shorter = malloc(newLength+1);
+	memcpy(shorter,b->data + length,newLength);
+	free(b->data);
+	shorter[newLength] = '\0';
+	b->data = shorter;
+	b->size = newLength;
+	return length;
+}
+
+buffer buffer_from_string(char * string){
+	buffer b = buffer_init(b,0);
+	b.data = strdup(string);
+	b.size = strlen(string);
 	return b;
 }
 
