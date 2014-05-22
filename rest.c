@@ -185,21 +185,21 @@ buffer rest_get_buffer (char ** params, char * url){
 
 buffer  rest_post (char ** params, char * url){
 	CURL * curl = curl_easy_init();
-	char * post = rest_build_url(params,""); post++;
+	char * post = rest_build_url(params,"");
 	char * escaped_url = rest_escape(url);
 	
 	SSL_CERT
 	buffer data = buffer_init(data,0);
 	curl_easy_setopt(curl,CURLOPT_URL,escaped_url);
 	int i = 0;
-	curl_easy_setopt(curl,CURLOPT_POSTFIELDS,post);
+	curl_easy_setopt(curl,CURLOPT_POSTFIELDS,post+1);
 	curl_easy_setopt(curl,CURLOPT_WRITEDATA, &data);
 	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK)
 		printf("res = &d, data = %s\n",res,data.data);
 	curl_easy_cleanup(curl);
-	free(--post);
+	free(post);
 	free(escaped_url);
 	return data;
 }
@@ -289,13 +289,14 @@ int rest_post_all(rest_args args){
 }
 buffer rest_put_file (char** params, char* url, FILE * in){
 	CURL * curl = curl_easy_init();
+	SSL_CERT
 	buffer data = buffer_init(data,0);
 	char * full_url = rest_build_url(params,url);
 //	printf("%s\n",full_url);
 	curl_easy_setopt(curl,CURLOPT_URL,full_url);
 	curl_easy_setopt(curl,CURLOPT_UPLOAD, 1L);
 	curl_easy_setopt(curl,CURLOPT_READDATA,in);
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
 	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
 	curl_easy_setopt(curl,CURLOPT_READFUNCTION,ReadFileCB); // for windows
@@ -311,6 +312,7 @@ buffer rest_put_file (char** params, char* url, FILE * in){
 
 buffer rest_put_headers (char** params,char** headers, char* url, FILE * in){
 	CURL * curl = curl_easy_init();
+	SSL_CERT
 	struct curl_slist *slist = NULL;
 	buffer data = buffer_init(data,0);
 	char * full_url = rest_build_url(params,url);
@@ -326,12 +328,13 @@ buffer rest_put_headers (char** params,char** headers, char* url, FILE * in){
 	curl_easy_setopt(curl,CURLOPT_URL,full_url);
 	curl_easy_setopt(curl,CURLOPT_UPLOAD, 1L);
 	curl_easy_setopt(curl,CURLOPT_READDATA,in);
-	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+//	curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	curl_easy_setopt(curl,CURLOPT_WRITEDATA,&data);
 	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
 	curl_easy_setopt(curl,CURLOPT_READFUNCTION,ReadFileCB); // for windows
 	CURLcode res = curl_easy_perform(curl);
 	free(full_url);
+	curl_slist_free_all(slist);
 	curl_easy_cleanup(curl);
 	if (res != CURLE_OK){
 		printf("res = %d, data = %.*s\n",res,data.size,data.data);
