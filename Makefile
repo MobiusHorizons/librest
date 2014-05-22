@@ -23,7 +23,9 @@ endif
 
 all : librest$(SL)
 
-install : librest$(SL)
+install : $(libdir)/librest$(SL)
+
+$(libdir)/librest$(SL) : librest$(SL)
 	libtool --mode=install install $(notdir $<) $(libdir)/$(notdir $<)
 
 librest.so: rest.o buffer.o
