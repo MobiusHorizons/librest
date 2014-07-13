@@ -197,7 +197,7 @@ buffer  rest_post (char ** params, char * url){
 	curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,WriteBufferCB);
 	CURLcode res = curl_easy_perform(curl);
 	if (res != CURLE_OK)
-		printf("res = &d, data = %s\n",res,data.data);
+		printf("res = %d, data = %s\n",res,data.data);
 	curl_easy_cleanup(curl);
 	free(post);
 	free(escaped_url);
