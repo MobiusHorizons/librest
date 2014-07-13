@@ -1,4 +1,5 @@
-CCFLAGS := -ggdb
+CCFLAGS := -ggdb 
+LDFLAGS := 
 
 ifeq ($(libdir),)
 ifeq ($(shell uname -m),x86_64)
@@ -29,7 +30,7 @@ $(libdir)/librest$(SL) : librest$(SL)
 	libtool --mode=install install $(notdir $<) $(libdir)/$(notdir $<)
 
 librest.so: rest.o buffer.o
-	$(LD) -shared -o librest.so rest.o buffer.o
+	$(LD) $(LDFLAGS) -shared -o librest.so rest.o buffer.o
 
 librest.dll: rest.wo buffer.wo
 	$(CC)  -shared -o librest.dll rest.wo buffer.wo -Wl,--out-implib,librestdll.a -static curl/lib/libcurl.a curl/lib/libssl.a curl/lib/libidn.a curl/lib/libcrypto.a curl/lib/librtmp.a curl/lib/libssh2.a curl/lib/libssl.a curl/lib/libz.a -lpthread -lws2_32 -lwinmm -lgdi32 -lwldap32 -Wl,--out-implib,librestdll.a,--no-undefined,--enable-runtime-pseudo-reloc
